@@ -1,0 +1,296 @@
+{
+  "name": "ai-email-calendar-automation",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "q": "is:unread subject:(meeting OR schedule OR discussion)"
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "198e32f9-50fb-4173-9634-a4b6f28bd7d0",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "8f7usmhlpZhmWgyw",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "57cfae78-2ec0-4ea5-81bb-b28148aa31be",
+              "name": "email_text",
+              "value": "={{ $json.snippet }}",
+              "type": "string"
+            },
+            {
+              "id": "c0100c53-5d49-4588-92aa-a6288eb135cb",
+              "name": "=sender_email",
+              "value": "={{ $json.From.match(/<(.+)>/)[1] }}\n",
+              "type": "string"
+            },
+            {
+              "id": "ddaa2c9c-b782-42aa-810f-db5be30972ac",
+              "name": "subject",
+              "value": "={{ $json.Subject }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "0e99e7cb-0e74-46e7-b187-53de56a7c7d8",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyCtG7BuETR173oZiOOgwFttvziKew1tjKs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"Extract meeting details from this email and return ONLY valid JSON in this exact format:\\n\\n{\\n  \\\"date\\\": \\\"YYYY-MM-DD\\\",\\n  \\\"time\\\": \\\"HH:MM\\\",\\n  \\\"duration_minutes\\\": number,\\n  \\\"topic\\\": \\\"string\\\"\\n}\\n\\nIf any field is missing return null.\\n\\nEmail:\\n{{$json.email_text}}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"temperature\": 0,\n    \"responseMimeType\": \"application/json\"\n  }\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        416,
+        0
+      ],
+      "id": "5b5ca75f-1b14-4384-ac6a-ef48036f169d",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3b1ac335-d1c5-432d-989b-a3d192ef67d0",
+              "name": "ai_parsed",
+              "value": "={{ JSON.parse($json.candidates[0].content.parts[0].text) }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        624,
+        0
+      ],
+      "id": "82855b8c-7d99-43e1-8ea0-d9021db3c88e",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "226e6e74-ace7-4f71-9064-748031994761",
+              "leftValue": "={{ $json.ai_parsed.date }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "69265f67-ce1c-4f3a-a10a-a1247045c549",
+              "leftValue": "={{ $json.ai_parsed.time }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        0
+      ],
+      "id": "c70b979d-91f0-400a-bd0c-0a9e40d41d39",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "rawnbuddhi@gmail.com",
+          "mode": "list",
+          "cachedResultName": "rawnbuddhi@gmail.com"
+        },
+        "start": "={{ \n  new Date(\n    $json.ai_parsed.date + 'T' + $json.ai_parsed.time + ':00'\n  )\n}}\n",
+        "end": "={{ \n  new Date(\n    new Date(\n      $json.ai_parsed.date + 'T' + $json.ai_parsed.time + ':00'\n    ).getTime() + ($json.ai_parsed.duration_minutes || 60) * 60000\n  )\n}}\n",
+        "additionalFields": {
+          "summary": "={{ $json.ai_parsed.topic || 'Meeting' }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        1040,
+        -96
+      ],
+      "id": "4ddc2333-684d-4e35-92ba-98e9b6053f38",
+      "name": "Create an event",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "RBB1osP0SkgWi2WJ",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Gmail Trigger').item.json.id }}\n",
+        "message": "=Hi,\n\nThank you for your message.\n\nI am available at {{ $('Edit Fields1').item.json.ai_parsed.time }} \non {{ $('Edit Fields1').item.json.ai_parsed.date }}.\n\nThe meeting has been scheduled successfully.\n\nLooking forward to connecting.\n\nBest regards,\nBuddhabhushan\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1248,
+        -96
+      ],
+      "id": "0c90c9c8-e1ec-42ec-b07e-16e070d68bbd",
+      "name": "Reply to a message",
+      "webhookId": "83f12647-319b-4be3-ae06-eef094f75dbd",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "4lL92QhHz9z7m5b4",
+          "name": "Gmail account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event": {
+      "main": [
+        [
+          {
+            "node": "Reply to a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "8cfafdd3-48a1-43ff-b8b8-0a6a474ac141",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "914c4c949199cc5146999b9ef8476e4330787e8cd9e392bdd2068f8161efb339"
+  },
+  "id": "PMlrfmyh4QoYKQ00izmT8",
+  "tags": []
+}
